@@ -13,7 +13,7 @@ a full pipeline to finetune Vicuna LLM with LoRA and RLHF on consumer hardware
     - [**Supervised Finetune**](#supervised-finetune)
     - [**Merge PEFT adapter into Model**](#merge-peft-adapter-into-model)
     - [**Train Reward Model**](#train-reward-model)
-      - [**Merge Reward adapter into Model**](#merge-reward-adapter-into-model)
+    - [**Merge Reward adapter into Model**](#merge-reward-adapter-into-model)
     - [**Tuning LM with PPO**](#tuning-lm-with-ppo)
   - [**Topics**](#topics)
   - [**Reference**](#reference)
@@ -46,10 +46,11 @@ python apply_delta.py --base 'decapoda-research/llama-7b-hf' --target './weights
 
 ### **Supervised Finetune**
 
-```
- check src/peft/utils/save_and_load.py , Only comment the line 52 to # #to_return = {k: v for k, v in to_return.items() if (("lora_" in k and adapter_name in k) or ("bias" in k))}
-```
-
+ check **src/peft/utils/save_and_load.py** first, Only comment the line 52 to
+ ```python
+ # #to_return = {k: v for k, v in to_return.items() if (("lora_" in k and adapter_name in k) or ("bias" in k))}
+ ```
+then run
 ```bash
 python supervised_finetune.py --data_path './data/merge_sample.json' --output_path 'lora-Vicuna' --model_path './weights/vicuna-7b' --eval_steps 200 --save_steps 200 --test_size 1
 ```
@@ -57,10 +58,13 @@ python supervised_finetune.py --data_path './data/merge_sample.json' --output_pa
 
 ### **Merge PEFT adapter into Model**
 
+check peft version first, if peft not 0.2.0, should install peft==0.2.0
 ```bash
 pip uninstall peft -y
 pip install peft==0.2.0  # 0.3.0.dev0 has many errors
+```
 
+```bash
 python merge_peft_adapter.py --model_name 'lora-Vicuna'
 
 pip uninstall peft -y
@@ -73,7 +77,7 @@ pip install git+https://github.com/huggingface/peft.git # then comments peft/uti
 python train_reward_model.py --model_name './weights/vicuna-7b' --gradient_accumulation_steps 32 --per_device_train_batch_size 1 --train_subset 100 --eval_subset 10 --local_rank 0 --bf16 False
 ```
 
-#### **Merge Reward adapter into Model**
+### **Merge Reward adapter into Model**
 
 ```bash
 python merge_peft_adapter.py --model_name ./lora-Vicuna-reward-model
