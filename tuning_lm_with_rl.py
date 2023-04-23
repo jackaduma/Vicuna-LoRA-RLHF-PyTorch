@@ -22,10 +22,10 @@ from typing import Optional
 import torch
 from accelerate import Accelerator
 from datasets import load_dataset
-from peft import LoraConfig
+from peft import LoraConfig, prepare_model_for_int8_training
 from tqdm import tqdm
 from transformers import Adafactor, AutoTokenizer, HfArgumentParser, pipeline
-from transformers import LlamaTokenizer
+from transformers import LlamaTokenizer, LlamaConfig, LlamaForSequenceClassification, LlamaForCausalLM
 
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer, set_seed
 from trl.core import LengthSampler
@@ -101,7 +101,7 @@ train_dataset = train_dataset.select(range(100))
 # sent_kwargs = {"return_all_scores": True, "function_to_apply": "none", "batch_size": 16, "truncation": True}
 sent_kwargs = {"return_all_scores": True, "function_to_apply": "none", "batch_size": 1, "truncation": True}
 
-if "llama" in script_args.tokenizer_name:
+if "llama" in script_args.tokenizer_name or "vicuna" in script_args.model_name or "Vicuna" in script_args.model_name:
     tokenizer = LlamaTokenizer.from_pretrained(script_args.tokenizer_name)
 else:
     tokenizer = AutoTokenizer.from_pretrained(script_args.tokenizer_name)
@@ -109,7 +109,7 @@ else:
 # GPT-2 tokenizer has a pad token, but it is not eos_token by default. We need to set it to eos_token.
 # only for this model.
 
-if "llama" in script_args.tokenizer_name:
+if "llama" in script_args.tokenizer_name or "vicuna" in script_args.model_name or "Vicuna" in script_args.model_name:
     tokenizer.add_special_tokens(
         {
             "eos_token": DEFAULT_EOS_TOKEN,
@@ -195,6 +195,7 @@ lora_config = LoraConfig(
     bias="none",
     task_type="CAUSAL_LM",
 )
+
 model = AutoModelForCausalLMWithValueHead.from_pretrained(
     config.model_name,
     load_in_8bit=True,
@@ -204,7 +205,8 @@ model = AutoModelForCausalLMWithValueHead.from_pretrained(
     layer_norm_names=[],
     torch_dtype=torch.float16,
 )
-print("model is_loaded_in_8bit: ", model.is_loaded_in_8bit)
+print("finetune model: ", config.model_name, type(model))
+print("finetune model's is_loaded_in_8bit: ", model.is_loaded_in_8bit)
 
 optimizer = None
 if script_args.adafactor:
@@ -235,23 +237,28 @@ if ppo_trainer.accelerator.num_processes == 1:
 print("device: ", device)
 
 
+print("reward_model_name: ", reward_model_name)
 #! my self code to try peft reward model
-# reward_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-#     reward_model_name, 
-#     load_in_8bit=True,
-#     device_map="auto",
-#     peft_config=lora_config,
-#     layer_norm_names=[],
-#     torch_dtype=torch.float16,
-# )
-# print("reward_model is_loaded_in_8bit: ", model.is_loaded_in_8bit)
+reward_model = LlamaForSequenceClassification.from_pretrained(
+    reward_model_name, 
+    load_in_8bit=True,
+    device_map="auto",
+    torch_dtype=torch.float16,
+)
+print("reward_model is_loaded_in_8bit: ", reward_model.is_loaded_in_8bit)
+
+reward_model = prepare_model_for_int8_training(reward_model)
+
+reward_model_config = LlamaConfig.from_pretrained(reward_model_name)
 
 sentiment_pipe = pipeline(
     "sentiment-analysis",
-    model=reward_model_name,
-    # model=reward_model,
+    # model=reward_model_name,
+    model=reward_model,
+    config=reward_model_config,
     # device_map={"": current_device},
     device_map="auto",
+    # TypeError: LlamaForSequenceClassification.__init__() got an unexpected keyword argument 'peft_config'
     model_kwargs={"load_in_8bit": True},
     tokenizer=tokenizer,
     torch_dtype=torch.float16,
