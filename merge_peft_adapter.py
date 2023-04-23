@@ -5,7 +5,7 @@
 '''
 Author: Kun
 Date: 2023-04-22 13:35:25
-LastEditTime: 2023-04-22 13:45:04
+LastEditTime: 2023-04-24 00:19:57
 LastEditors: Kun
 Description: 
 FilePath: /Vicuna-LoRA-RLHF-PyTorch/merge_peft_adapter.py
