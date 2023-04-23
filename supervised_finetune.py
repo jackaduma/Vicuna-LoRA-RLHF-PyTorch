@@ -8,15 +8,9 @@ import sys
 import torch
 import torch.nn as nn
 import bitsandbytes as bnb
-from datasets import load_dataset
 import transformers
 import argparse
 import warnings
-
-assert (
-    "LlamaTokenizer" in transformers._import_structure["models.llama"]
-), "LLaMA is now in HuggingFace's main branch.\nPlease reinstall it: pip uninstall transformers && pip install git+https://github.com/huggingface/transformers.git"
-from transformers import LlamaForCausalLM, LlamaTokenizer
 from peft import (
     prepare_model_for_int8_training,
     LoraConfig,
@@ -24,12 +18,20 @@ from peft import (
     get_peft_model_state_dict,
     set_peft_model_state_dict,
 )
+from transformers import LlamaForCausalLM, LlamaTokenizer
+from datasets import load_dataset
+from data_loader import sft_dataloader
+
+assert (
+    "LlamaTokenizer" in transformers._import_structure["models.llama"]
+), "LLaMA is now in HuggingFace's main branch.\nPlease reinstall it: pip uninstall transformers && pip install git+https://github.com/huggingface/transformers.git"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--wandb", action="store_true", default=False)
 parser.add_argument("--data_path", type=str, default="merge.json")
 parser.add_argument("--output_path", type=str, default="lora-Vicuna")
-parser.add_argument("--model_path", type=str, default="decapoda-research/llama-7b-hf")
+parser.add_argument("--model_path", type=str,
+                    default="decapoda-research/llama-7b-hf")
 parser.add_argument("--eval_steps", type=int, default=200)
 parser.add_argument("--save_steps", type=int, default=200)
 parser.add_argument("--test_size", type=int, default=200)
@@ -50,13 +52,14 @@ CUTOFF_LEN = 256  # 256 accounts for about 96% of the data
 LORA_R = 8
 LORA_ALPHA = 16
 LORA_DROPOUT = 0.05
-VAL_SET_SIZE = args.test_size #2000
+VAL_SET_SIZE = args.test_size  # 2000
 TARGET_MODULES = [
     "q_proj",
     "v_proj",
 ]
-DATA_PATH = args.data_path #"/home/cciip/private/fanchenghao/dataset/instruction/merge.json"
-OUTPUT_DIR = args.output_path #"lora-Vicuna"
+# "/home/cciip/private/fanchenghao/dataset/instruction/merge.json"
+DATA_PATH = args.data_path
+OUTPUT_DIR = args.output_path  # "lora-Vicuna"
 
 device_map = "auto"
 world_size = int(os.environ.get("WORLD_SIZE", 1))
@@ -86,16 +89,17 @@ config = LoraConfig(
 )
 model = get_peft_model(model, config)
 tokenizer.pad_token_id = 0  # unk. we want this to be different from the eos token
-#tokenizer.padding_side = "left"  # Allow batched inference
+# tokenizer.padding_side = "left"  # Allow batched inference
 
 data = load_dataset("json", data_files=DATA_PATH)
 
-now_max_steps = max((len(data["train"]) - VAL_SET_SIZE) // BATCH_SIZE * EPOCHS, EPOCHS)
+now_max_steps = max(
+    (len(data["train"]) - VAL_SET_SIZE) // BATCH_SIZE * EPOCHS, EPOCHS)
 if args.resume_from_checkpoint:
-# Check the available weights and load them
+    # Check the available weights and load them
     checkpoint_name = os.path.join(
         args.resume_from_checkpoint, "pytorch_model.bin"
-)  # Full checkpoint
+    )  # Full checkpoint
     if not os.path.exists(checkpoint_name):
         pytorch_bin_path = checkpoint_name
         checkpoint_name = os.path.join(
@@ -103,7 +107,8 @@ if args.resume_from_checkpoint:
         )  # only LoRA model - LoRA config above has to fit
         if os.path.exists(checkpoint_name):
             os.rename(checkpoint_name, pytorch_bin_path)
-            warnings.warn("The file name of the lora checkpoint'adapter_model.bin' is replaced with 'pytorch_model.bin'")
+            warnings.warn(
+                "The file name of the lora checkpoint'adapter_model.bin' is replaced with 'pytorch_model.bin'")
         else:
             args.resume_from_checkpoint = (
                 None  # So the trainer won't try loading its state
@@ -115,16 +120,18 @@ if args.resume_from_checkpoint:
         model = set_peft_model_state_dict(model, adapters_weights)
     else:
         print(f"Checkpoint {checkpoint_name} not found")
-    
-    train_args_path = os.path.join(args.resume_from_checkpoint, "trainer_state.json")
-    
+
+    train_args_path = os.path.join(
+        args.resume_from_checkpoint, "trainer_state.json")
+
     if os.path.exists(train_args_path):
         import json
         base_train_args = json.load(open(train_args_path, 'r'))
         base_max_steps = base_train_args["max_steps"]
         resume_scale = base_max_steps / now_max_steps
         if base_max_steps > now_max_steps:
-            warnings.warn("epoch {} replace to the base_max_steps {}".format(EPOCHS, base_max_steps))
+            warnings.warn("epoch {} replace to the base_max_steps {}".format(
+                EPOCHS, base_max_steps))
             EPOCHS = None
             MAX_STEPS = base_max_steps
         else:
@@ -135,104 +142,10 @@ else:
 
 model.print_trainable_parameters()
 
-def generate_prompt(data_point):
-    # sorry about the formatting disaster gotta move fast
-    if data_point["input"]:
-        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
-### Instruction:
-{data_point["instruction"]}
-
-### Input:
-{data_point["input"]}
-
-### Response:
-{data_point["output"]}"""
-    else:
-        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
-
-### Instruction:
-{data_point["instruction"]}
-
-### Response:
-{data_point["output"]}"""
-
-
-def tokenize(prompt):
-    # there's probably a way to do this with the tokenizer settings
-    # but again, gotta move fast
-    result = tokenizer(
-        prompt,
-        truncation=True,
-        max_length=CUTOFF_LEN + 1,
-        padding="max_length",
-    )
-    return {
-        "input_ids": result["input_ids"][:-1],
-        "attention_mask": result["attention_mask"][:-1],
-    }
-
-
-def generate_and_tokenize_prompt(data_point):
-    # This function masks out the labels for the input,
-    # so that our loss is computed only on the response.
-    user_prompt = (
-        (
-            f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
-
-### Instruction:
-{data_point["instruction"]}
-
-### Input:
-{data_point["input"]}
-
-### Response:
-"""
-        )
-        if data_point["input"]
-        else (
-            f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
-
-### Instruction:
-{data_point["instruction"]}
-
-### Response:
-"""
-        )
-    )
-    len_user_prompt_tokens = (
-        len(
-            tokenizer(
-                user_prompt,
-                truncation=True,
-                max_length=CUTOFF_LEN + 1,
-            )["input_ids"]
-        )
-        - 1
-    )  # no eos token
-    full_tokens = tokenizer(
-        user_prompt + data_point["output"],
-        truncation=True,
-        max_length=CUTOFF_LEN + 1,
-        padding="max_length",
-    )["input_ids"][:-1]
-    return {
-        "input_ids": full_tokens,
-        "labels": [-100] * len_user_prompt_tokens
-        + full_tokens[len_user_prompt_tokens:],
-        "attention_mask": [1] * (len(full_tokens)),
-    }
-
-
-if VAL_SET_SIZE > 0:
-    train_val = data["train"].train_test_split(
-        test_size=VAL_SET_SIZE, shuffle=True, seed=42
-    )
-    train_data = train_val["train"].shuffle().map(generate_and_tokenize_prompt)
-    val_data = train_val["test"].shuffle().map(generate_and_tokenize_prompt)
-else:
-    train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
-    val_data = None
+dataloader = sft_dataloader.SFTDataLoader(
+    data, CUTOFF_LEN, VAL_SET_SIZE, tokenizer)
+train_data, val_data = dataloader.load_data()
 
 trainer = transformers.Trainer(
     model=model,
@@ -258,7 +171,8 @@ trainer = transformers.Trainer(
         report_to="wandb" if args.wandb else [],
         ignore_data_skip=args.ignore_data_skip,
     ),
-    data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
+    data_collator=transformers.DataCollatorForLanguageModeling(
+        tokenizer, mlm=False)
 )
 model.config.use_cache = False
 
@@ -275,4 +189,3 @@ print("\n If there's a warning about missing keys above, please disregard :)")
 trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
 
 model.save_pretrained(OUTPUT_DIR)
-
