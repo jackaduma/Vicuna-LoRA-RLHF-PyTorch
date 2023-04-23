@@ -143,14 +143,14 @@ training_args = TrainingArguments(
 )
 
 # Load the value-head model and tokenizer.
-if "llama" in script_args.model_name:
+if "llama" in script_args.model_name or "vicuna" in script_args.model_name or "Vicuna" in script_args.model_name:
     tokenizer = LlamaTokenizer.from_pretrained(script_args.model_name)
     config = LlamaConfig.from_pretrained(script_args.model_name)
 else:
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_name, trust_remote_code=True)
     config = AutoConfig.from_pretrained(script_args.model_name, trust_remote_code=True)
 
-if "llama" in script_args.model_name:
+if "llama" in script_args.model_name or "vicuna" in script_args.model_name or "Vicuna" in script_args.model_name:
     # required for llama
     tokenizer.add_special_tokens(
         {
@@ -175,7 +175,7 @@ print("device_map: ", device_map)
 #    script_args.model_name, num_labels=1, torch_dtype=torch.bfloat16
 # )
 
-if "llama" in script_args.model_name:
+if "llama" in script_args.model_name or "vicuna" in script_args.model_name or "Vicuna" in script_args.model_name:
     model = LlamaForSequenceClassification.from_pretrained(
         script_args.model_name,
         num_labels=1,
