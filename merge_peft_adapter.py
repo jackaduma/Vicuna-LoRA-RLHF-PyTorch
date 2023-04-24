@@ -2,14 +2,6 @@
 # -*- coding: utf-8 -*-
 # @author: Kun
 
-'''
-Author: Kun
-Date: 2023-04-22 13:35:25
-LastEditTime: 2023-04-24 00:19:57
-LastEditors: Kun
-Description: 
-FilePath: /Vicuna-LoRA-RLHF-PyTorch/merge_peft_adapter.py
-'''
 
 from dataclasses import dataclass, field
 from typing import Optional
