@@ -24,6 +24,8 @@ from transformers import (
 from transformers.utils import PaddingStrategy
 from transformers import LlamaForCausalLM, LlamaTokenizer, LlamaForSequenceClassification, LlamaConfig
 
+from data_loader import rm_dataloader
+
 DEFAULT_PAD_TOKEN = "[PAD]"
 DEFAULT_EOS_TOKEN = "</s>"
 DEFAULT_BOS_TOKEN = "</s>"
@@ -98,22 +100,13 @@ script_args = parser.parse_args_into_dataclasses()[0]
 dataset_name = "./datasets/"
 print("dataset_name: ", dataset_name)
 
-# Load the human stack-exchange-paired dataset for tuning the reward model.
-# train_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/reward", split="train")
-train_dataset = load_dataset(dataset_name, split="train")
-if script_args.train_subset > 0:
-    train_dataset = train_dataset.select(range(script_args.train_subset))
-# eval_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/evaluation", split="train")
-eval_dataset = load_dataset(dataset_name, split="train")
-if script_args.eval_subset > 0:
-    eval_dataset = eval_dataset.select(range(script_args.eval_subset))
 # Define the training args. Needs to be done before the model is loaded if you are using deepspeed.
 model_name_split = script_args.model_name.split("/")[-1]
 # output_name = (
 # f"{model_name_split}_peft_stack-exchange-paired_rmts__{script_args.train_subset}_{script_args.learning_rate}"
 # )
 output_name = (
-    f"{model_name_split}_peft_comparision_data-paired_rmts__{script_args.train_subset}_{script_args.learning_rate}"
+    f"reward_model_{model_name_split}_{script_args.train_subset}_{script_args.learning_rate}"
 )
 
 training_args = TrainingArguments(
@@ -213,49 +206,10 @@ tokenizer.pad_token = tokenizer.eos_token
 model.config.pad_token_id = tokenizer.eos_token_id
 model.config.use_cache = not script_args.gradient_checkpointing
 num_proc = 24  # Can adjust to be higher if you have more processors.
-original_columns = train_dataset.column_names
 
 
-# Turn the dataset into pairs of post + summaries, where text_j is the preferred question + answer and text_k is the other.
-# Then tokenize the dataset.
-def preprocess_function(examples):
-    new_examples = {
-        "input_ids_j": [],
-        "attention_mask_j": [],
-        "input_ids_k": [],
-        "attention_mask_k": [],
-    }
-    # for question, response_j, response_k in zip(examples["question"], examples["response_j"], examples["response_k"]):
-    for question, response_j, response_k in zip(examples["user_input"], examples["completion_a"], examples["completion_b"]):
-        tokenized_j = tokenizer(
-            "Question: " + question + "\n\nAnswer: " + response_j, truncation=True)
-        tokenized_k = tokenizer(
-            "Question: " + question + "\n\nAnswer: " + response_k, truncation=True)
-
-        new_examples["input_ids_j"].append(tokenized_j["input_ids"])
-        new_examples["attention_mask_j"].append(tokenized_j["attention_mask"])
-        new_examples["input_ids_k"].append(tokenized_k["input_ids"])
-        new_examples["attention_mask_k"].append(tokenized_k["attention_mask"])
-
-    return new_examples
-
-
-# preprocess the dataset and filter out QAs that are longer than 512
-print("train_dataset: ", len(train_dataset))
-train_dataset = train_dataset.map(
-    preprocess_function, batched=True, num_proc=num_proc, remove_columns=original_columns
-)
-train_dataset = train_dataset.filter(lambda x: len(
-    x["input_ids_j"]) <= 512 and len(x["input_ids_k"]) <= 512)
-print("train_dataset: ", len(train_dataset))
-
-
-print("eval_dataset: ", len(eval_dataset))
-eval_dataset = eval_dataset.map(
-    preprocess_function, batched=True, num_proc=num_proc, remove_columns=original_columns)
-eval_dataset = eval_dataset.filter(lambda x: len(
-    x["input_ids_j"]) <= 512 and len(x["input_ids_k"]) <= 512)
-print("eval_dataset: ", len(eval_dataset))
+reward_dataloder = rm_dataloader.RewardDataLoader(dataset_name, script_args.train_subset, script_args.eval_subset, num_proc, tokenizer)
+train_dataset, eval_dataset = reward_dataloder.load_data()
 
 # We need to define a special data collator that batches the data in our j vs k format.
 @dataclass
@@ -348,4 +302,5 @@ model.config.use_cache = False
 trainer.train(script_args.resume_from_checkpoint)
 
 print("Saving last checkpoint of the model")
-model.save_pretrained(output_name + "_peft_last_checkpoint")
+# model.save_pretrained(output_name + "_peft_last_checkpoint")
+model.save_pretrained(output_name)
