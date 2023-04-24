@@ -80,13 +80,13 @@ python train_reward_model.py --model_name './weights/vicuna-7b' --gradient_accum
 ### **Merge Reward adapter into Model**
 
 ```bash
-python merge_peft_adapter.py --model_name ./lora-Vicuna-reward-model
+python merge_peft_adapter.py --model_name ./reward_model_vicuna-7b
 ```
 
 ### **Tuning LM with PPO**
 
 ```bash
-python tuning_lm_with_rl.py --model_name './lora-Vicuna-adapter-merged' --reward_model_name './lora-Vicuna-reward-model-adapter-merged' --adafactor False --tokenizer_name 'decapoda-research/llama-7b-hf' --save_freq 100 --output_max_length 128 --batch_size 1 --gradient_accumulation_steps 1 --batched_gen True --ppo_epochs 1 --seed 0 --learning_rate 1.4e-5 --early_stopping True --output_dir './checkpoints/tuning_llama_rl'
+python tuning_lm_with_rl.py --model_name './lora-Vicuna-adapter-merged' --reward_model_name './reward_model_vicuna-7b-adapter-merged' --adafactor False --tokenizer_name 'decapoda-research/llama-7b-hf' --save_freq 100 --output_max_length 128 --batch_size 1 --gradient_accumulation_steps 1 --batched_gen True --ppo_epochs 1 --seed 0 --learning_rate 1.4e-5 --early_stopping True --output_dir './tuning_llama_rl_checkpoints'
 ```
 
 ---
