@@ -2,6 +2,14 @@
 # -*- coding: utf-8 -*-
 # @author: Kun
 
+from peft import (
+    prepare_model_for_int8_training,
+    LoraConfig,
+    get_peft_model,
+    get_peft_model_state_dict,
+    set_peft_model_state_dict,
+)
+from transformers import LlamaForCausalLM, LlamaTokenizer
 import os
 import sys
 
@@ -11,14 +19,7 @@ import bitsandbytes as bnb
 import transformers
 import argparse
 import warnings
-from peft import (
-    prepare_model_for_int8_training,
-    LoraConfig,
-    get_peft_model,
-    get_peft_model_state_dict,
-    set_peft_model_state_dict,
-)
-from transformers import LlamaForCausalLM, LlamaTokenizer
+
 from datasets import load_dataset
 from data_loader import sft_dataloader
 
