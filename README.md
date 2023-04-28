@@ -17,6 +17,9 @@ a full pipeline to finetune Vicuna LLM with LoRA and RLHF on consumer hardware
     - [**Tuning LM with PPO**](#tuning-lm-with-ppo)
   - [**Topics**](#topics)
   - [**Reference**](#reference)
+  - [**Star-History**](#star-history)
+  - [Donation](#donation)
+  - [**License**](#license)
 ---
 
 ## **Environment Setup**
@@ -107,3 +110,29 @@ requirements 主要是按照 [alpaca-lora](https://github.com/tloen/alpaca-lora)
 * [https://github.com/tloen/alpaca-lora](https://github.com/tloen/alpaca-lora)
 * [https://github.com/lvwerra/trl](https://github.com/lvwerra/trl)
 * [https://github.com/jasonvanf/llama-trl](https://github.com/jasonvanf/llama-trl)
+
+------
+## **Star-History**
+
+![star-history](https://api.star-history.com/svg?repos=jackaduma/Vicuna-LoRA-RLHF-PyTorch&type=Date "star-history")
+
+------
+
+## Donation
+If this project help you reduce time to develop, you can give me a cup of coffee :) 
+
+AliPay(支付宝)
+<div align="center">
+	<img src="./misc/ali_pay.png" alt="ali_pay" width="400" />
+</div>
+
+WechatPay(微信)
+<div align="center">
+    <img src="./misc/wechat_pay.png" alt="wechat_pay" width="400" />
+</div>
+
+------
+
+## **License**
+
+[MIT](LICENSE) © Kun
