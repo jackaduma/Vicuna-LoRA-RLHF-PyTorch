@@ -24,6 +24,8 @@ Usage:
 python3 -m fastchat.model.apply_delta --base ~/model_weights/llama-7b --target ~/model_weights/vicuna-7b --delta lmsys/vicuna-7b-delta-v1.1
 """
 
+torch.cuda.empty_cache()
+
 GB = 1 << 30
 
 
@@ -42,42 +44,41 @@ def split_files(model_path, tmp_path, split_size):
         new_state_dict = {}
 
         current_size = 0
-    try:
-        for name, param in state_dict.items():
-            param_size = param.numel() * param.element_size()
+        try:
+            for name, param in state_dict.items():
+                param_size = param.numel() * param.element_size()
 
-            if current_size + param_size > split_size:
-                new_file_name = f"pytorch_model-{part}.bin"
-                new_file_path = os.path.join(tmp_path, new_file_name)
-                torch.save(new_state_dict, new_file_path)
-                current_size = 0
-                new_state_dict = None
-                gc.collect()
-                new_state_dict = {}
-                part += 1
+                if current_size + param_size > split_size:
+                    new_file_name = f"pytorch_model-{part}.bin"
+                    new_file_path = os.path.join(tmp_path, new_file_name)
+                    torch.save(new_state_dict, new_file_path)
+                    current_size = 0
+                    new_state_dict = None
+                    gc.collect()
+                    new_state_dict = {}
+                    part += 1
 
-            new_state_dict[name] = param
-            current_size += param_size
+                new_state_dict[name] = param
+                current_size += param_size
 
-        new_file_name = f"pytorch_model-{part}.bin"
-        new_file_path = os.path.join(tmp_path, new_file_name)
-        torch.save(new_state_dict, new_file_path)
-        new_state_dict = None
-        gc.collect()
-        new_state_dict = {}
-        part += 1
-    except Exception as e:
-        print(f"An error occurred during split_files: {e}")
-        shutil.rmtree(tmp_path)
-        raise
-
+            new_file_name = f"pytorch_model-{part}.bin"
+            new_file_path = os.path.join(tmp_path, new_file_name)
+            torch.save(new_state_dict, new_file_path)
+            new_state_dict = None
+            gc.collect()
+            new_state_dict = {}
+            part += 1
+        except Exception as e:
+            print(f"An error occurred during split_files: {e}")
+            shutil.rmtree(tmp_path)
+            raise
 
 def apply_delta_low_cpu_mem(base_model_path, target_model_path, delta_path):
     # base_tokenizer = AutoTokenizer.from_pretrained(base_model_path, use_fast=False)
     # base_config = AutoConfig.from_pretrained(base_model_path)
 
     base_tokenizer = LlamaTokenizer.from_pretrained(base_model_path, use_fast=False)
-    base_config = LlamaConfig.from_pretrained(base_model_path)
+    base_config = LlamaConfig.from_pretrained(base_model_path , load_in_8bit=True)
 
     if os.path.exists(target_model_path):
         shutil.rmtree(target_model_path)
@@ -168,7 +169,7 @@ if __name__ == "__main__":
         "disk as swap to reduce the memory usage below 10GB.",
     )
     args = parser.parse_args()
-
+    # args.low_cpu_mem=True
     if args.low_cpu_mem:
         apply_delta_low_cpu_mem(
             args.base_model_path, args.target_model_path, args.delta_path
